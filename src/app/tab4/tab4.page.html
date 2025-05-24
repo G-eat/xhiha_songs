@@ -1,0 +1,50 @@
+<ion-header [translucent]="true" class="ion-safe-area-top ion-padding-top">
+  <ion-toolbar>
+    <ion-title>Playlists</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true" class="ion-padding">
+
+  <!-- Create Playlist -->
+  <ion-item>
+    <ion-input [(ngModel)]="newPlaylistName" placeholder="New playlist name"></ion-input>
+    <ion-button slot="end" (click)="createPlaylist()">Add</ion-button>
+  </ion-item>
+
+  <!-- Playlist List -->
+  <ion-item *ngFor="let playlist of playlists" [class.active]="playlist.id === selectedPlaylistId">
+    <ion-label (click)="selectPlaylist(playlist.id)">
+      {{ playlist.name }}
+    </ion-label>
+    <ion-button slot="end" fill="clear" (click)="playPlaylist(playlist.id)">
+      <ion-icon slot="icon-only" name="play-outline"></ion-icon>
+    </ion-button>
+    <ion-button slot="end" color="danger" fill="clear" (click)="deletePlaylist(playlist.id)">
+      <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
+    </ion-button>
+  </ion-item>
+
+  <ng-template #noPlaylists>
+    <ion-text color="medium" style="display: block; margin-top: 16px;">No playlists yet. Create one above.</ion-text>
+  </ng-template>
+
+  <!-- Songs in Selected Playlist -->
+  <div *ngIf="songsInPlaylist.length > 0">
+    <h4 class="ion-margin-top">Songs</h4>
+    <ion-list>
+      <ion-item *ngFor="let song of songsInPlaylist">
+        <ion-label>
+          <h2>{{ song.title }}</h2>
+        </ion-label>
+        <ion-button slot="end" fill="clear" (click)="playSongFromPlaylist(song)">
+          <ion-icon slot="icon-only" name="play-outline"></ion-icon>
+        </ion-button>
+        <ion-button slot="end" color="danger" fill="clear" (click)="removeSongFromPlaylist(song.id)">
+          <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
+        </ion-button>
+      </ion-item>            
+    </ion-list>
+  </div>
+
+</ion-content>

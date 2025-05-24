@@ -1,0 +1,7 @@
+{
+  "name": "Xhiha - Songs",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "angular"
+}

@@ -1,0 +1,29 @@
+<ion-header [translucent]="true" class="ion-safe-area-top ion-padding-top">
+  <ion-toolbar>
+    <ion-title>Search</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true" class="ion-padding">
+
+  <!-- Search Input -->
+  <ion-searchbar [(ngModel)]="searchQuery" (ionInput)="onSearch()" placeholder="Search YouTube videos...">
+  </ion-searchbar>
+
+  <!-- Video Results -->
+  <ion-list *ngIf="videos.length">
+    <ion-item *ngFor="let video of videos">
+      <ion-thumbnail slot="start">
+        <img [src]="video.snippet.thumbnails.default.url">
+      </ion-thumbnail>
+      <ion-label>
+        <h2>{{ video.snippet.title }}</h2>
+        <p>{{ video.snippet.channelTitle }}</p>
+      </ion-label>
+      <ion-button slot="end" fill="outline" (click)="download(video.id.videoId)">
+        Download
+      </ion-button>
+    </ion-item>
+  </ion-list>
+
+</ion-content>

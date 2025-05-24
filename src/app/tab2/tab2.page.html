@@ -1,0 +1,38 @@
+<ion-header [translucent]="true" class="ion-safe-area-top ion-padding-top">
+  <ion-toolbar>
+    <ion-title>Downloads</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true" class="ion-padding">
+
+  <ion-searchbar [(ngModel)]="searchQuery" (ionInput)="onSearchChange($event)"
+    placeholder="Search songs..."></ion-searchbar>
+
+  <ion-list *ngIf="filteredSongs.length; else noSongs">
+    <ion-item *ngFor="let song of filteredSongs">
+      <ion-thumbnail slot="start">
+        <img [src]="song.thumbnail" *ngIf="song.thumbnail">
+        </ion-thumbnail>
+      <ion-label>
+        <h2>{{ song.title }}</h2>
+        <!-- <p>{{ song.path }}</p> -->
+      </ion-label>
+      <!-- <ion-button slot="end" fill="outline" (click)="playSong(song.path)"></ion-button> -->
+      <ion-button slot="end" fill="outline" (click)="openInPlayer(song)">
+        ▶️
+      </ion-button>
+      <ion-button slot="end" fill="outline" (click)="openPlaylistSelector(song)">
+        ➕
+      </ion-button>
+      <ion-button slot="end" color="danger" fill="outline" (click)="deleteSong(song)">
+        🗑️
+      </ion-button>      
+    </ion-item>
+  </ion-list>
+
+  <ng-template #noSongs>
+    <ion-text color="medium">No songs downloaded yet.</ion-text>
+  </ng-template>
+
+</ion-content>
