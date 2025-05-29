@@ -4,6 +4,8 @@ import { SqliteService } from '../services/sqlite.service';
 import { Media, MediaObject } from '@awesome-cordova-plugins/media/ngx';
 import { File } from '@awesome-cordova-plugins/file/ngx';
 import { Platform } from '@ionic/angular';
+import { App } from '@capacitor/app';
+import { NgZone } from '@angular/core';
 
 interface Song {
   title: string;
@@ -38,8 +40,21 @@ export class Tab3Page {
     private sqliteService: SqliteService,
     private mediaPlugin: Media,
     private file: File,
-    private platform: Platform
-  ) {}
+    private platform: Platform,
+    private zone: NgZone
+  ) {
+    App.addListener('resume', () => {
+      if (this.media && this.isPlaying) {
+        console.log('🔁 Resuming playback');
+        this.startTracking(); // ✅ Restart timer updates
+      }
+    });
+
+    App.addListener('pause', () => {
+      console.log('⏸️ App paused, stopping tracking');
+      this.stopTracking(); // optional: stop while backgrounded
+    });
+  }
 
   async ionViewWillEnter() {
     await this.platform.ready();
@@ -83,10 +98,12 @@ export class Tab3Page {
   
 
   async loadAndPlay(song: Song) {
-    // Generate a new token for this request
+    const index = this.songsList.findIndex(s => s.path === song.path);
+    if (index !== -1) this.currentIndex = index; // ✅ Track current index
+  
     const currentToken = ++this.playToken;
   
-    // Stop existing playback
+    // Stop existing media
     if (this.media) {
       try {
         this.media.stop();
@@ -99,12 +116,9 @@ export class Tab3Page {
   
     const filePath = song.path;
   
-    console.log('🟡 Attempting to play:', song.title, filePath);
-  
     try {
       const media = this.mediaPlugin.create(filePath);
   
-      // Delay playing until fully loaded
       media.onStatusUpdate.subscribe(status => {
         if (status === 2 && this.playToken === currentToken) {
           this.isPlaying = true;
@@ -120,42 +134,45 @@ export class Tab3Page {
   
       media.onError.subscribe((err: any) => {
         if (this.playToken === currentToken) {
-          const msg = `Media Error\nCode: ${err?.code ?? 'N/A'}\nMessage: ${err?.message ?? 'No message'}`;
-          console.error(msg, err);
+          console.error('Media Error:', err);
         }
       });
   
-      // Only assign and play if this is still the latest click
       if (this.playToken === currentToken) {
         this.media = media;
-        this.song = song;
-        this.currentTime = 0;
-        this.duration = 0;
+        this.song = song;               // ✅ update song object
+        this.currentTime = 0;           // ✅ reset time
+        this.duration = 0;              // ✅ reset duration
         this.isPlaying = true;
         media.play();
         this.startTracking();
-        console.log('✅ Playing now:', song.title);
       } else {
-        media.release(); // clean up unused media
-        console.warn('⚠️ Skipped outdated playback for:', song.title);
+        media.release();
       }
     } catch (err) {
-      console.error('❌ loadAndPlay failed:', err);
+      console.error('loadAndPlay failed:', err);
     }
   }
+  
 
   startTracking() {
     this.stopTracking();
-
+  
     this.intervalId = setInterval(() => {
       this.media?.getCurrentPosition().then(pos => {
-        if (pos >= 0) this.currentTime = Math.floor(pos);
+        if (pos >= 0) {
+          this.zone.run(() => {
+            this.currentTime = Math.floor(pos); // ✅ triggers UI update
+          });
+        }
       });
-
+  
       if (this.duration === 0 && this.media) {
         const dur = this.media.getDuration();
         if (dur > 0) {
-          this.duration = Math.floor(dur);
+          this.zone.run(() => {
+            this.duration = Math.floor(dur); // ✅ triggers UI update
+          });
         }
       }
     }, 1000);
