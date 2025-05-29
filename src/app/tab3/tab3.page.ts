@@ -1,121 +1,233 @@
-import { Component, ViewChild, ElementRef } from '@angular/core';
+import { Component } from '@angular/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { SqliteService } from '../services/sqlite.service';
+import { Media, MediaObject } from '@awesome-cordova-plugins/media/ngx';
+import { File } from '@awesome-cordova-plugins/file/ngx';
+import { Platform } from '@ionic/angular';
+
+interface Song {
+  title: string;
+  path: string;
+  thumbnail?: string;
+}
 
 @Component({
   selector: 'app-tab3',
   templateUrl: 'tab3.page.html',
   styleUrls: ['tab3.page.scss'],
-  standalone: false,
+  standalone: false
 })
 export class Tab3Page {
-  @ViewChild('audioPlayer', { static: false }) audioPlayer!: ElementRef<HTMLAudioElement>;
+  song: Song | null = null;
+  songsList: Song[] = [];
 
-  song: { title: string; path: string; thumbnail?: string } | null = null;
-  songsList: { title: string; path: string; thumbnail?: string }[] = [];
-
+  media: MediaObject | null = null;
   isPlaying = false;
-  duration = 0;
   currentTime = 0;
+  duration = 0;
+  intervalId: any;
+
   repeat = false;
   shuffle = false;
+  currentIndex = 0;
+  private playToken = 0;
+  private lastPlayedSongId: number | null = null;
 
-  constructor(private sqliteService: SqliteService) {}
+
+  constructor(
+    private sqliteService: SqliteService,
+    private mediaPlugin: Media,
+    private file: File,
+    private platform: Platform
+  ) {}
 
   async ionViewWillEnter() {
+    await this.platform.ready();
+  
     const state = history.state;
   
-    // 🎵 If playlist passed, use it
-    if (state.playlistSongs && Array.isArray(state.playlistSongs)) {
-      this.songsList = state.playlistSongs;
-      const startIndex = state.playIndex ?? 0;
-      const songToPlay = this.songsList[startIndex];
-      if (songToPlay) {
-        await this.loadAndPlay(songToPlay);
-      }
+    // 1. Handle playlist from Tab 4
+    if (state.playlistSongs && Array.isArray(state.playlistSongs) && state.playIndex !== undefined) {
+      const playlist = state.playlistSongs;
+      const song = playlist[state.playIndex];
+  
+      // if (!this.lastPlayedSongId || this.lastPlayedSongId !== song.id) {
+        this.songsList = playlist;
+        this.lastPlayedSongId = song.id;
+        await this.loadAndPlay(song);
+      // }
       return;
     }
   
-    // 🎵 Otherwise load all songs fresh
-    this.songsList = await this.sqliteService.getSongs();
+    // 2. Handle single song from Tab 2
+    if (state.song) {
+      const song = state.song;
   
-    const newSong = state.song;
-    if (newSong) {
-      await this.loadAndPlay(newSong);
+      // if (!this.lastPlayedSongId || this.lastPlayedSongId !== song.id) {
+        this.songsList = await this.sqliteService.getSongs(); // or just [song] if needed
+        this.lastPlayedSongId = song.id;
+        await this.loadAndPlay(song);
+      //}
+      return;
     }
+  
+    // 3. Just re-entered tab without new state → skip reloading
+    if (this.song && this.media) {
+      console.log('🔁 Already playing, no action needed');
+    }
+  
+    // 4. Default first load
+    this.songsList = await this.sqliteService.getSongs();
+    return;
   }
   
 
-  async loadAndPlay(song: { title: string; path: string; thumbnail?: string }) {
-    const audio = this.audioPlayer.nativeElement;
-
-    this.isPlaying = false;
-    this.currentTime = 0;
-    this.duration = 0;
-
-    audio.pause();
-    audio.src = '';
-    audio.load();
-
+  async loadAndPlay(song: Song) {
+    // Generate a new token for this request
+    const currentToken = ++this.playToken;
+  
+    // Stop existing playback
+    if (this.media) {
+      try {
+        this.media.stop();
+        this.media.release();
+      } catch (e) {
+        console.warn('Error stopping previous media:', e);
+      }
+      this.media = null;
+    }
+  
+    const filePath = song.path;
+  
+    console.log('🟡 Attempting to play:', song.title, filePath);
+  
     try {
-      const fileName = song.path.split('/').pop();
-      const file = await Filesystem.readFile({
-        path: fileName!,
-        directory: Directory.Documents
+      const media = this.mediaPlugin.create(filePath);
+  
+      // Delay playing until fully loaded
+      media.onStatusUpdate.subscribe(status => {
+        if (status === 2 && this.playToken === currentToken) {
+          this.isPlaying = true;
+        }
+      });
+  
+      media.onSuccess.subscribe(() => {
+        if (this.playToken === currentToken) {
+          this.isPlaying = false;
+          this.onEnded();
+        }
+      });
+  
+      media.onError.subscribe((err: any) => {
+        if (this.playToken === currentToken) {
+          const msg = `Media Error\nCode: ${err?.code ?? 'N/A'}\nMessage: ${err?.message ?? 'No message'}`;
+          console.error(msg, err);
+        }
+      });
+  
+      // Only assign and play if this is still the latest click
+      if (this.playToken === currentToken) {
+        this.media = media;
+        this.song = song;
+        this.currentTime = 0;
+        this.duration = 0;
+        this.isPlaying = true;
+        media.play();
+        this.startTracking();
+        console.log('✅ Playing now:', song.title);
+      } else {
+        media.release(); // clean up unused media
+        console.warn('⚠️ Skipped outdated playback for:', song.title);
+      }
+    } catch (err) {
+      console.error('❌ loadAndPlay failed:', err);
+    }
+  }
+
+  startTracking() {
+    this.stopTracking();
+
+    this.intervalId = setInterval(() => {
+      this.media?.getCurrentPosition().then(pos => {
+        if (pos >= 0) this.currentTime = Math.floor(pos);
       });
 
-      if (!file.data) {
-        console.error('No file data found');
-        return;
+      if (this.duration === 0 && this.media) {
+        const dur = this.media.getDuration();
+        if (dur > 0) {
+          this.duration = Math.floor(dur);
+        }
       }
-
-      const blob = this.base64ToBlob(file.data as string, 'audio/mp3');
-      const blobUrl = URL.createObjectURL(blob);
-
-      audio.src = blobUrl;
-
-      audio.onloadedmetadata = () => {
-        audio.play().catch(err => {
-          console.warn('Playback failed:', err);
-        });
-        this.isPlaying = true;
-      };
-
-      audio.load();
-      this.song = song;
-    } catch (error) {
-      console.error('Error loading file:', error);
-    }
+    }, 1000);
   }
 
-  base64ToBlob(base64: string, mime: string): Blob {
-    const binary = atob(base64);
-    const array = Uint8Array.from(binary, c => c.charCodeAt(0));
-    return new Blob([array], { type: mime });
+  stopTracking() {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
   }
 
   togglePlay() {
-    const audio = this.audioPlayer.nativeElement;
-    if (audio.paused) {
-      audio.play();
-      this.isPlaying = true;
-    } else {
-      audio.pause();
+    if (!this.media) return;
+
+    if (this.isPlaying) {
+      this.media.pause();
       this.isPlaying = false;
+    } else {
+      this.media.play();
+      this.isPlaying = true;
     }
   }
 
-  onTimeUpdate() {
-    this.currentTime = this.audioPlayer.nativeElement.currentTime;
+  seekTo(event: any) {
+    const value = typeof event.detail.value === 'number'
+      ? event.detail.value
+      : (event.detail.value?.lower ?? 0); // fallback if range
+  
+    this.media?.seekTo(value * 1000);
+    this.currentTime = value;
+  }
+  
+  async onEnded() {
+    this.isPlaying = false;
+
+    if (this.repeat) {
+      this.media?.seekTo(0);
+      this.media?.play();
+      this.isPlaying = true;
+      return;
+    }
+
+    this.playNextSong();
   }
 
-  onLoadedMetadata() {
-    this.duration = this.audioPlayer.nativeElement.duration;
+  playNextSong() {
+    if (this.shuffle) {
+      let next;
+      do {
+        next = Math.floor(Math.random() * this.songsList.length);
+      } while (next === this.currentIndex && this.songsList.length > 1);
+      this.currentIndex = next;
+    } else {
+      this.currentIndex = (this.currentIndex + 1) % this.songsList.length;
+    }
+
+    this.loadAndPlay(this.songsList[this.currentIndex]);
   }
 
-  seekTo(event: CustomEvent) {
-    const value = (event.detail.value as number);
-    this.audioPlayer.nativeElement.currentTime = value;
+  playPreviousSong() {
+    this.currentIndex = (this.currentIndex - 1 + this.songsList.length) % this.songsList.length;
+    this.loadAndPlay(this.songsList[this.currentIndex]);
+  }
+
+  stop() {
+    this.stopTracking();
+    if (this.media) {
+      this.media.stop();
+      this.media.release();
+      this.media = null;
+    }
   }
 
   toggleRepeat() {
@@ -128,58 +240,17 @@ export class Tab3Page {
     if (this.shuffle) this.repeat = false;
   }
 
-  async onEnded() {
-    this.isPlaying = false;
-
-    if (this.repeat) {
-      this.audioPlayer.nativeElement.currentTime = 0;
-      await this.audioPlayer.nativeElement.play();
-      this.isPlaying = true;
-      return;
-    }
-
-    this.playNextSong();
-  }
-
-  playNextSong() {
-    if (!this.songsList.length) return;
-
-    if (this.shuffle) {
-      const nextSong = this.getRandomSong();
-      this.loadAndPlay(nextSong);
-    } else {
-      const currentIndex = this.songsList.findIndex(s => s.path === this.song?.path);
-      const nextIndex = (currentIndex + 1) % this.songsList.length;
-      const nextSong = this.songsList[nextIndex];
-      this.loadAndPlay(nextSong);
-    }
-  }
-
-  playPreviousSong() {
-    if (!this.songsList.length) return;
-
-    const currentIndex = this.songsList.findIndex(s => s.path === this.song?.path);
-    const prevIndex = (currentIndex - 1 + this.songsList.length) % this.songsList.length;
-    const prevSong = this.songsList[prevIndex];
-    this.loadAndPlay(prevSong);
-  }
-
-  getRandomSong() {
-    let randomSong;
-    do {
-      const i = Math.floor(Math.random() * this.songsList.length);
-      randomSong = this.songsList[i];
-    } while (randomSong.path === this.song?.path && this.songsList.length > 1);
-    return randomSong;
-  }
-
   formatTime(seconds: number): string {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${this.pad(mins)}:${this.pad(secs)}`;
   }
 
-  pad(value: number): string {
-    return value < 10 ? `0${value}` : `${value}`;
+  pad(num: number): string {
+    return num < 10 ? '0' + num : num.toString();
+  }
+
+  ngOnDestroy() {
+    this.stop();
   }
 }

@@ -1,11 +1,12 @@
-<ion-header [translucent]="true" class="ion-safe-area-top ion-padding-top">
+<ion-header [translucent]="true">
   <ion-toolbar>
     <ion-title>Now Playing</ion-title>
   </ion-toolbar>
 </ion-header>
 
 <ion-content class="ion-padding">
-  <div class="player-container">
+  <!-- Sticky Player Controls -->
+  <div style="position: sticky; top: 0; z-index: 10; background: var(--ion-background-color); padding-bottom: 8px;">
     <ion-item lines="none">
       <ion-thumbnail slot="start">
         <img [src]="song?.thumbnail" style="width: 80px; height: 80px; object-fit: cover;" />
@@ -14,16 +15,14 @@
         <h2>{{ song?.title }}</h2>
       </ion-label>
     </ion-item>
-  
-    <audio #audioPlayer (timeupdate)="onTimeUpdate()" (loadedmetadata)="onLoadedMetadata()" (ended)="onEnded()"></audio>
-  
+
     <ion-range min="0" [max]="duration" [value]="currentTime" (ionChange)="seekTo($event)">
     </ion-range>
-  
+
     <div class="time-display" style="text-align: center; margin-top: 4px;">
       {{ formatTime(currentTime) }} / {{ formatTime(duration) }}
     </div>
-  
+
     <ion-grid class="ion-margin-top">
       <ion-row class="ion-justify-content-center ion-align-items-center">
         <ion-col size="auto">
@@ -31,25 +30,21 @@
             <ion-icon name="play-back-outline"></ion-icon>
           </ion-button>
         </ion-col>
-  
         <ion-col size="auto">
           <ion-button fill="clear" (click)="toggleRepeat()" [color]="repeat ? 'primary' : 'medium'">
             <ion-icon name="repeat-outline"></ion-icon>
           </ion-button>
         </ion-col>
-  
         <ion-col size="auto">
           <ion-button fill="solid" shape="round" color="primary" (click)="togglePlay()">
             <ion-icon [name]="isPlaying ? 'pause-outline' : 'play-outline'"></ion-icon>
           </ion-button>
         </ion-col>
-  
         <ion-col size="auto">
           <ion-button fill="clear" (click)="toggleShuffle()" [color]="shuffle ? 'primary' : 'medium'">
             <ion-icon name="shuffle-outline"></ion-icon>
           </ion-button>
         </ion-col>
-  
         <ion-col size="auto">
           <ion-button fill="clear" (click)="playNextSong()">
             <ion-icon name="play-forward-outline"></ion-icon>
@@ -58,9 +53,8 @@
       </ion-row>
     </ion-grid>
   </div>
-  
-  <h4 style="margin-top: 16px;">All songs</h4>
 
+  <!-- Scrollable Song List -->
   <ion-list *ngIf="songsList.length">
     <ion-item *ngFor="let s of songsList" (click)="loadAndPlay(s)" [color]="s.path === song?.path ? 'light' : ''">
       <ion-thumbnail slot="start">
@@ -71,6 +65,4 @@
       </ion-label>
     </ion-item>
   </ion-list>
-  
-
 </ion-content>

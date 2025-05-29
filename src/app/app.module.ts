@@ -11,6 +11,8 @@ import { HttpClientModule } from '@angular/common/http'; // ✅ Add this line
 
 import { Media } from '@awesome-cordova-plugins/media/ngx';
 
+import { File } from '@awesome-cordova-plugins/file/ngx';
+
 @NgModule({
   declarations: [AppComponent],
   imports: [
@@ -21,7 +23,7 @@ import { Media } from '@awesome-cordova-plugins/media/ngx';
   ],
   providers: [
     { provide: RouteReuseStrategy, useClass: IonicRouteStrategy },
-    Media // ✅ Add Media here
+    Media, File // ✅ Add Media here
   ],
   bootstrap: [AppComponent],
 })
